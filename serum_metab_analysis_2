@@ -1,0 +1,117 @@
+
+#the purpose of this code: import, clean, normalize, check distribution, visualization (ex)  - generally try different versions and work from there - example of two ML based models - Vairable Importance and Random Forest modeling, With the outputs of those two files - Spearman Correlations and Network Analysis to understand the interactions
+
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import networkx as nx  # For network analysis
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error, r2_score
+from scipy.stats import spearmanr
+
+# 1. Load and clean the dataset(generally includes checking for NAs, duplicates and any weird values) - in this case only checked for NAs because I had previously cleaned this dataset before 
+def load_and_clean_data(filepath):
+    df = pd.read_csv(filepath)
+    df_clean = df.dropna()
+    return df_clean
+
+# 2. Normalize the data
+def normalize_data(df, target_column):
+    scaler = StandardScaler()
+    X = df.drop(columns=[target_column])
+    y = df[target_column]
+    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns)
+    return X_scaled, y
+
+# 3. Check distribution of biomarkers - (always check and adjust if more normalization needed - in this case it didnt need to be done )
+def check_distribution(df):
+    df.hist(bins=30, figsize=(20, 15))
+    plt.tight_layout()
+    plt.show()
+
+# 4. Visualize the data using bar plots and scatter plots (generally using a mix of bar, scatter, frequency, histogram and etc.. - trying with diff vairables depending on the goals of the visualization) 
+def visualize_data(X, y):
+    X.mean().plot(kind='bar', figsize=(12, 6), color='skyblue')
+    plt.title("Mean Values of Biomarkers")
+    plt.ylabel("Mean")
+    plt.show()
+    
+    for col in X.columns:
+        plt.figure(figsize=(6, 4))
+        sns.scatterplot(x=X[col], y=y)
+        plt.title(f"Scatter Plot - {col} vs {y.name}")
+        plt.xlabel(col)
+        plt.ylabel(y.name)
+        plt.show()
+
+# 5. Train a Random Forest model and evaluate it (RF model adjusted accordingly)
+def random_forest_model(X, y):
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+    rf_model.fit(X_train, y_train)
+    y_pred = rf_model.predict(X_test)
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+    print(f"Random Forest Model Performance:\nMSE: {mse:.2f}, R2: {r2:.2f}")
+    return rf_model
+
+# 6. Extract the top important features  (VIP Modeling)
+def plot_feature_importance(model, X):
+    importances = model.feature_importances_
+    feature_importance_df = pd.DataFrame({
+        'Feature': X.columns,
+        'Importance': importances
+    }).sort_values(by='Importance', ascending=False)
+    
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x='Importance', y='Feature', data=feature_importance_df.head(10))
+    plt.title('Top 10 Feature Importance - Random Forest')
+    plt.show()
+    
+    return feature_importance_df['Feature'].head(10).tolist()
+
+# 7. Spearman Correlation Analysis for top features (Correlations between the top biomarkers)
+def spearman_correlation_analysis(df, top_features):
+    spearman_corr = df[top_features].corr(method='spearman')
+    
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(spearman_corr, annot=True, cmap="coolwarm", fmt=".2f")
+    plt.title("Spearman Correlation Heatmap of Top Features")
+    plt.show()
+
+# 8. Network Analysis for variable interaction (To then look at interaction between all the variables)
+def network_analysis(df, top_features):
+    corr_matrix = df[top_features].corr()
+    G = nx.Graph()
+    threshold = 0.5
+
+    for i, feature1 in enumerate(top_features):
+        for j, feature2 in enumerate(top_features):
+            if i != j and np.abs(corr_matrix.iloc[i, j]) > threshold:
+                G.add_edge(feature1, feature2, weight=corr_matrix.iloc[i, j])
+    
+    plt.figure(figsize=(10, 8))
+    pos = nx.spring_layout(G)
+    nx.draw_networkx(G, pos, with_labels=True, node_color="skyblue", edge_color="gray", node_size=2000, font_size=10)
+    plt.title("Network Analysis of Top Biomarkers Interaction")
+    plt.show()
+
+# Main function to run the entire workflow
+def main(filepath, target_column):
+    df_clean = load_and_clean_data(filepath)
+    X_scaled, y = normalize_data(df_clean, target_column)
+    check_distribution(X_scaled)
+    visualize_data(X_scaled, y)
+    rf_model = random_forest_model(X_scaled, y)
+    top_features = plot_feature_importance(rf_model, X_scaled)
+    spearman_correlation_analysis(df_clean, top_features)
+    network_analysis(df_clean, top_features)
+
+# Example usage:
+# filepath = 'biomarker_data.csv'
+# target_column = 'Aging'
+# main(filepath, target_column)
